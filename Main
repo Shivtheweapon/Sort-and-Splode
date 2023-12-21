@@ -1,0 +1,353 @@
+#Checkpoint 2:
+#We changed the game so that the bomb buddies appear at random postions and directions on the screen instead of the top and bottom. Thus, there will no longer be a conveyor belt sprite at the top and bottom.
+#The game will no longer pause after 40 bombs are correctly sorted to tally them up for the score. Instead, the player's score will be immediatly updated as the bombs are sorted.
+#None of the basic and additional features from checkpoint one have changed.
+#Progress: We have successfully created the bomb generation and bomb movement across the screen.
+#Up next: We still need to incorporate the user input, the high score text and functionality, the timer text and functionality, the function that checks when a player loses, the explosion sprite animation, the game over screen, the top three high scores text and functionality, the game restart button, and an introduction screen.
+import uvage
+import random
+camera = uvage.Camera(800, 600)
+red_bomb_sprite = uvage.load_sprite_sheet("Red Bomb Sprite Sheet.png",1,2)
+red_bomb_buddy = uvage.from_image(100, 500, red_bomb_sprite[-1])
+red_bomb_buddy.scale_by(0.5)
+black_bomb_sprite = uvage.load_sprite_sheet("Black Bomb Sprite Sheet.png",1,2)
+black_bomb_buddy = uvage.from_image(400, 500, black_bomb_sprite[-1])
+black_bomb_buddy.scale_by(0.5)
+red_box = uvage.from_color(75, 300, 'red', 150, 200)
+black_box = uvage.from_color(725, 300, 'black', 150, 200)
+current_frame = 0
+bombs = []
+timer = 0
+held_for = 0
+max_value = 0
+initial_click = False
+clicked_bomb = None
+score = 0
+game_over = False
+restart_text = None
+time_alive = 0
+frame_count = 0
+seconds = 0
+player_name = ""
+player_text = None
+last_key_pressed = None
+backspace_pressed_last = False
+high_scores = []
+the_real_high_scores = []
+can_type = True
+score_updated = False
+player_score = uvage.from_text(400, 50, str(score), 50, 'red')
+num_bombs = uvage.from_text(700, 30, 'Bombs: ' + str(len(bombs)), 30, 'black')
+time_survived = uvage.from_text(100, 30, 'Time Alive: 0', 30, 'black')
+final_time_survived = None
+final_score = None
+def theKey(x):
+    return x[1]
+def move_buddies(): #This function applies the correct movement, orientation, and animation for each bomb buddy.
+    global current_frame
+    global clicked_bomb
+    current_frame += 0.3
+    if current_frame > 2:
+        current_frame = 0
+    red_bomb_buddy.image = red_bomb_sprite[int(current_frame)]
+    black_bomb_buddy.image = black_bomb_sprite[int(current_frame)]
+    for each in bombs:
+
+        if str(each) != str(clicked_bomb):
+            if each.y > 600:
+                each.yspeed = -3
+            if each.y < 0:
+                each.yspeed = 3
+            if each.x > 800:
+                each.xspeed = -3
+                each.flip()
+            if each.x < 0:
+                each.xspeed = 3
+                each.flip()
+            if each.left_touches(red_box):
+                each.xspeed = 3
+                each.flip()
+            if each.bottom_touches(red_box):
+                each.yspeed = -3
+            if each.top_touches(red_box):
+                each.yspeed = 3
+            if each.top_touches(black_box):
+                each.yspeed = 3
+            if each.bottom_touches(black_box):
+                each.yspeed = -3
+            if each.right_touches(black_box):
+                each.xspeed = -3
+                each.flip()
+            each.move_to_stop_overlapping(black_box)
+            each.move_to_stop_overlapping(red_box)
+            for x in bombs:
+                if not each == x:
+                    each.move_to_stop_overlapping(x)
+        each.move_speed()
+        each.image = red_bomb_sprite[int(current_frame)] if '63x63' in str(each) else black_bomb_sprite[int(current_frame)]
+        # red bombs are scaled to 63x63 while black bombs are scaled to 64x64 so that we can distinguish between the two
+
+def generate_buddies(): #This function generates new bomb buddies at random positions and starting directions by appending the bombs list.
+    global bombs
+    global red_bomb_buddy
+    global black_bomb_buddy
+    global timer
+    global num_bombs
+    if game_over == False:
+        if timer == 0:
+            color = random.choice(["red", "black"])
+            x_position = random.randint(180, 620)
+            y_position = random.randint(50, 550)
+            if color == "red":
+                red_bomb_buddy = uvage.from_image(x_position, y_position, red_bomb_sprite[-1])
+                red_bomb_buddy.scale_by(0.49)
+                bombs.append(red_bomb_buddy)
+            else:
+                black_bomb_buddy = uvage.from_image(x_position, y_position, black_bomb_sprite[-1])
+                black_bomb_buddy.scale_by(0.5)
+                bombs.append(black_bomb_buddy)
+            bombs[-1].yspeed = random.choice([-3, 3])
+            bombs[-1].xspeed = random.choice([-3, 3])
+            num_bombs = uvage.from_text(700, 30, 'Bombs: ' + str(len(bombs)), 30, 'black')
+            if bombs[-1].xspeed > 0:
+                bombs[-1].flip()
+        for all in bombs:
+            all.move_speed()
+            camera.draw(all)
+def delay():
+    global timer, score
+    max_delay = 50  # initial maximum delay
+    min_delay = 20  # minimum delay
+    score_factor = 2  # adjust based on how quickly the score increases
+    # Calculate the delay based on the score. The higher the score, the shorter the delay.
+    delay = max_delay - (score // score_factor)
+    if delay < min_delay:
+        delay = min_delay
+    timer += 1
+    if timer > delay:
+        timer = 0
+def mouse_released():
+    global bombs
+    global max_value
+    global held_for
+    global initial_click
+    global clicked_bomb
+    global red_box
+    global black_box
+    global score
+    global player_score
+    global game_over
+    if camera.mouseclick:
+        held_for += 1
+    else:
+        if held_for > max_value:
+            max_value = held_for
+            held_for = 0
+        else:
+            held_for = 0
+    if max_value > 0 and held_for == 0:
+        for bomb in bombs:
+            if bomb.speedx == 0 and bomb.speedy == 0:  # Bomb is held
+                initial_click = False
+                if '63x63' in str(clicked_bomb) and clicked_bomb.touches(red_box):
+                    bombs.remove(clicked_bomb)
+                    score += 1
+                    player_score = uvage.from_text(400, 50, str(score), 50, 'red')
+                if '64x64' in str(clicked_bomb) and clicked_bomb.touches(black_box):
+                    bombs.remove(clicked_bomb)
+                    score += 1
+                    player_score = uvage.from_text(400, 50, str(score), 50, 'red')
+                if '63x63' in str(clicked_bomb) and clicked_bomb.touches(black_box):
+                    game_over = True
+                    player_score = uvage.from_text(400, 50, 'Game Over', 50, 'red')
+                    put_name = uvage.from_text(400, 150, 'Enter Your Name to Save Score and See Ranking!', 30, 'black')
+                    camera.draw(put_name)
+                    bombs = []
+                if '64x64' in str(clicked_bomb) and clicked_bomb.touches(red_box):
+                    game_over = True
+                    player_score = uvage.from_text(400, 50, 'Game Over', 50, 'red')
+                    put_name = uvage.from_text(400, 150, 'Enter Your Name to Save Score and See Ranking!', 30, 'black')
+                    camera.draw(put_name)
+
+                    bombs = []
+                bomb.speedx = random.choice([-3, 3])  # Random movement on release
+                bomb.speedy = random.choice([-3, 3])
+                clicked_bomb = None
+                if bomb.speedx < 0:
+                    bomb.flip()
+                break
+def game_controller():
+    global bombs
+    global initial_click
+    global clicked_bomb
+    mouse_position = camera.mouse
+    mouse_click = camera.mouseclick
+    for bomb in bombs:
+        if mouse_click:
+            if bomb.contains(mouse_position):
+                clicked_bomb = bomb
+                clicked_bomb.speedx = 0
+                clicked_bomb.speedy = 0
+                clicked_bomb.center = mouse_position
+                initial_click = True
+                break
+            if initial_click == True:
+                clicked_bomb.center = mouse_position
+def stopwatch():
+    global frame_count
+    global seconds
+    global time_survived
+    if game_over == False:
+        frame_count += 1
+        seconds = (int(frame_count/30))
+        time_survived = uvage.from_text(100, 30, 'Time Alive: ' + str(seconds), 30, 'black')
+        camera.draw(time_survived)
+def game_end():
+    global bombs
+    global game_over
+    global player_score
+    global restart_text
+    global current_frame
+    global held_for
+    global timer
+    global max_value
+    global initial_click
+    global clicked_bomb
+    global score
+    global time_alive
+    global seconds
+    global final_time_survived
+    global frame_count
+    global final_score
+    global player_name
+    global player_text
+    global backspace_pressed_last
+    global can_type
+    global score_updated
+    if len(bombs) > 10:
+        game_over = True
+        player_score = uvage.from_text(400, 50, 'Game Over', 50, 'red')
+    if game_over == True:
+        restart_text = uvage.from_text(400, 100, 'Click anywhere to restart!', 30, 'black')
+        final_time_survived = uvage.from_text(400, 200, 'Time Survived: ' + str(seconds) + ' seconds', 30, 'black')
+        final_score = uvage.from_text(400, 250, 'Final Score: ' + str(score), 30, 'black')
+        put_name = uvage.from_text(400, 150, 'Enter Your Name to Save Score and See Ranking!', 30, 'black')
+        camera.draw(put_name)
+        camera.draw(restart_text)
+        camera.draw(final_time_survived)
+        camera.draw(final_score)
+        if camera.mouseclick:
+            current_frame = 0
+            bombs = []
+            timer = 0
+            held_for = 0
+            max_value = 0
+            initial_click = False
+            clicked_bomb = None
+            score = 0
+            game_over = False
+            restart_text = None
+            game_over = False
+            time_alive = 0
+            seconds = 0
+            frame_count = 0
+            can_type = True
+            score_updated = False
+            player_name = ""
+            player_score = uvage.from_text(400, 50, str(score), 50, 'red')
+def get_player_name():
+    global game_over
+    global player_name
+    global last_key_pressed
+    global backspace_pressed_last
+    global player_text
+    global can_type
+    global score_updated
+    if game_over == True and can_type == True:
+        allowed_characters = "abcdefghijklmnopqrstuvwxyz"
+        key_pressed = False
+        if can_type == True:
+            for char in allowed_characters:
+                if uvage.is_pressing(char):
+                    key_pressed = True
+                    if last_key_pressed != char:
+                        player_name += char
+                        last_key_pressed = char
+                    break
+            if not key_pressed:
+                last_key_pressed = None
+                # Handle backspace for deleting the last character
+                if uvage.is_pressing('backspace'):
+                    if not backspace_pressed_last:
+                        player_name = player_name[:-1]
+                        backspace_pressed_last = True
+                else:
+                    backspace_pressed_last = False
+            player_text = uvage.from_text(400, 300, player_name, 30, 'black')
+            camera.draw(player_text)
+        if uvage.is_pressing('return'):
+            high_scores.clear()
+            the_real_high_scores.clear()
+            can_type = False
+            score_updated = True
+            with open('high_scores.txt', 'a') as f:
+                print(player_name + ' : ' + str(score), file=f)
+                print(player_name + ':' + str(score), file=f)
+                f.close()
+            with open('high_scores.txt', 'r') as file_connector:
+                for line in file_connector:
+                    x = line.index(":")
+                    theDudesName = line[0:x]
+                    theScore = line[x + 1:]
+                    high_scores.append([theDudesName,theScore])
+                file_connector.close()
+            high_scores.sort(key = theKey, reverse = True)
+            for each in range(5):
+                high_scores[each][1] = high_scores[each][1].replace("\n", "")
+                the_real_high_scores.append((high_scores[each]))
+
+
+
+
+
+
+
+
+    if score_updated == True:
+        player_text = uvage.from_text(400, 300, 'Score Updated!', 30, 'black')
+        uno = "First Place: " + the_real_high_scores[0][0] + " Score: " + the_real_high_scores[0][1]
+        dos = "Second Place: " + the_real_high_scores[1][0] + " Score: " + the_real_high_scores[1][1]
+        tres = "Third Place: " + the_real_high_scores[2][0] + " Score: " + the_real_high_scores[2][1]
+        quadro = "Fourth Place: " + the_real_high_scores[3][0] + " Score: " + the_real_high_scores[3][1]
+        cinco = "Fifth Place: " + the_real_high_scores[4][0] + " Score: " + the_real_high_scores[4][1]
+        a = uvage.from_text(400, 350, uno, 30, 'black')
+        b = uvage.from_text(400, 400, dos, 30, 'black')
+        c = uvage.from_text(400, 450, tres, 30, 'black')
+        d = uvage.from_text(400, 500, quadro, 30, 'black')
+        e = uvage.from_text(400, 550, cinco, 30, 'black')
+        camera.draw(a)
+        camera.draw(b)
+        camera.draw(c)
+        camera.draw(d)
+        camera.draw(e)
+        camera.draw(player_text)
+
+
+
+
+def tick():
+    camera.clear('gray')
+    camera.draw(red_box)
+    camera.draw(black_box)
+    camera.draw(player_score)
+    camera.draw(num_bombs)
+    move_buddies()
+    generate_buddies()
+    delay()
+    mouse_released()
+    game_controller()
+    stopwatch()
+    get_player_name()
+    game_end()
+    camera.display()
+uvage.timer_loop(30, tick)
